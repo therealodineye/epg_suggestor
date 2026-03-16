@@ -10,7 +10,7 @@ _COUNTRY_CODES = {
     'za','ie','is','lu','ee','lv','lt','ua','by','md','ge','am','az',
     'kz','uz','pk','in','sg','my','th','ph','id','jp','kr','cn','hk',
     'tw','ae','sa','qa','kw','bh','om','eg','ma','tn','dz','ly','ng',
-    'ke','gh','tz','et','cm','ci','sn','rw','ug','ao','mz',
+    'ke','gh','tz','et','cm','ci','sn','rw','ug','ao','mz','ru','cl',
 }
 
 _UNICODE_RE = _re.compile(r'[\u1d00-\u1dbf\u2c60-\u2c7f\u2070-\u209f\u00b2-\u00b3\u00b9]+')
