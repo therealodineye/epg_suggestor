@@ -1,0 +1,8 @@
+{
+  "key": "epg_suggester",
+  "name": "EPG Suggester",
+  "version": "1.0",
+  "author": "Plugin Developer",
+  "description": "Scans channels without EPGs and suggests mappings based on channel names.",
+  "main": "plugin.py"
+}
