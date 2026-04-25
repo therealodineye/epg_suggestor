@@ -1,7 +1,7 @@
 {
   "name": "EPG Suggester",
-  "version": "1.2.0",
-  "description": "Scans channels without EPG assignments and suggests the best matching EPG entry based on fuzzy channel name matching. Strips IPTV prefixes (US|, UK:), quality tags (HD, 4K), and noise words (VIP, backup) before scoring.",
+  "version": "2.3.0",
+  "description": "Scans channels without EPG assignments and suggests the best matching EPG entry based on fuzzy channel name matching. Strips IPTV prefixes (US|, UK:), quality tags (HD, 4K), and noise words (VIP, backup) before scoring. Supports callsign matching, source priority, auto-apply with rollback, dry-run preview, CSV export/import workflow, and audit of already-matched channels.",
   "author": "Jan Erik (custom)",
   "help_url": "https://github.com/Dispatcharr/Dispatcharr/blob/main/Plugins.md",
   "fields": [
@@ -9,8 +9,8 @@
       "id": "min_score",
       "label": "🎯 Minimum Match Score (0-100)",
       "type": "number",
-      "default": 50,
-      "help_text": "Only suggest EPG entries scoring at or above this threshold. Lower = more suggestions but less accurate. Start at 50, raise to 70+ once results look good."
+      "default": 60,
+      "help_text": "Only suggest EPG entries scoring at or above this threshold. Lower = more suggestions but less accurate. Start at 60, raise to 70+ once results look good."
     },
     {
       "id": "max_suggestions",
@@ -28,6 +28,14 @@
       "help_text": "Comma-separated EPG source names to search within. Leave blank to search all sources."
     },
     {
+      "id": "preferred_sources",
+      "label": "⭐ Preferred EPG Sources (priority order)",
+      "type": "string",
+      "default": "",
+      "placeholder": "Source A, Source B",
+      "help_text": "When multiple sources match equally, prefer sources listed first. Comma-separated, highest priority first. Leave blank to use score alone."
+    },
+    {
       "id": "group_filter",
       "label": "📂 Limit to Channel Groups (optional)",
       "type": "string",
@@ -40,7 +48,7 @@
       "label": "🌍 Strip Geographic Prefixes (US|, UK:, USA: …)",
       "type": "boolean",
       "default": true,
-      "help_text": "Remove country/region prefixes before matching so 'US| CNN' matches 'CNN'."
+      "help_text": "Remove country/region prefixes before matching so 'US| CNN' matches 'CNN'. Disable if your channel names intentionally include country codes as part of the name."
     },
     {
       "id": "ignore_quality_tags",
@@ -61,21 +69,21 @@
       "label": "⚡ Auto-Apply Best Match (use with caution!)",
       "type": "boolean",
       "default": false,
-      "help_text": "When enabled, 'Apply Best Suggestions' will actually write EPG assignments. Always review the CSV export first!"
+      "help_text": "When enabled, 'Apply Best Suggestions' will actually write EPG assignments. A rollback snapshot is always saved first. Always review the CSV export or dry-run first!"
     },
     {
       "id": "auto_apply_threshold",
       "label": "🔒 Auto-Apply Min Score (0-100)",
       "type": "number",
       "default": 85,
-      "help_text": "Safety floor for auto-apply. Only matches scoring at or above this will be assigned. Only used when Auto-Apply is enabled."
+      "help_text": "Safety floor for auto-apply and dry-run. Only matches scoring at or above this will be assigned. Also used by 'Audit Matched Channels' to flag better matches."
     }
   ],
   "actions": [
     {
       "id": "scan_and_suggest",
       "label": "🔍 Scan & Suggest EPG",
-      "description": "Scan all channels without EPG assigned and suggest the best matching EPG entries. Results shown as a report.",
+      "description": "Scan all channels without EPG assigned and suggest the best matching EPG entries. Results shown as a report with score and match type (callsign / fuzzy).",
       "button_label": "▶ Run Scan",
       "button_variant": "filled",
       "button_color": "blue"
@@ -83,23 +91,73 @@
     {
       "id": "export_suggestions_csv",
       "label": "📤 Export Suggestions to CSV",
-      "description": "Run the suggestion scan and save full results to /data/exports/epg_suggester_TIMESTAMP.csv.",
+      "description": "Run the suggestion scan and save full results to /data/exports/epg_suggester_TIMESTAMP.csv. Edit the CSV to remove unwanted rows, then use 'Apply from CSV' to apply it.",
       "button_label": "💾 Export CSV",
       "button_variant": "filled",
       "button_color": "teal"
     },
     {
+      "id": "dry_run_apply",
+      "label": "🧪 Dry Run Apply",
+      "description": "Preview exactly which EPG assignments 'Apply Best Suggestions' would make, without writing anything to the database. Uses the auto-apply threshold regardless of whether auto-apply is enabled.",
+      "button_label": "👁 Dry Run",
+      "button_variant": "outline",
+      "button_color": "blue"
+    },
+    {
       "id": "apply_suggestions",
       "label": "✅ Apply Best Suggestions",
-      "description": "Assign the top EPG suggestion to each unmatched channel (only those above the auto-apply threshold). Requires 'Auto-Apply' to be enabled. Review the CSV export first!",
+      "description": "Assign the top EPG suggestion to each unmatched channel scoring at or above the auto-apply threshold. Requires 'Auto-Apply' to be enabled. A rollback snapshot is saved first — use 'Restore Last Apply' to undo.",
       "button_label": "⚠ Apply Suggestions",
       "button_variant": "filled",
       "button_color": "orange",
       "confirm": {
         "required": true,
         "title": "Apply EPG Suggestions?",
-        "message": "This will assign EPG data to unmatched channels. Make sure you have reviewed the CSV export first. Continue?"
+        "message": "This will assign EPG data to unmatched channels. A rollback snapshot will be saved first. Make sure you have reviewed the dry-run or CSV export. Continue?"
       }
+    },
+    {
+      "id": "apply_from_csv",
+      "label": "📥 Apply from CSV",
+      "description": "Apply EPG assignments from the most recently exported CSV. Delete rows you don't want applied before running. Only rank=1 rows are processed. A rollback snapshot is saved first.",
+      "button_label": "📥 Apply from CSV",
+      "button_variant": "outline",
+      "button_color": "teal",
+      "confirm": {
+        "required": true,
+        "title": "Apply from CSV?",
+        "message": "This will apply EPG assignments from the latest exported CSV. Have you edited the CSV to remove any rows you don't want applied? A rollback snapshot will be saved. Continue?"
+      }
+    },
+    {
+      "id": "restore_last_apply",
+      "label": "↩ Restore Last Apply",
+      "description": "Revert EPG assignments to the state before the most recent apply operation. Reads the latest rollback snapshot from /data/exports/.",
+      "button_label": "↩ Restore",
+      "button_variant": "outline",
+      "button_color": "red",
+      "confirm": {
+        "required": true,
+        "title": "Restore Last Apply?",
+        "message": "This will revert EPG assignments to the state captured in the most recent rollback snapshot. Continue?"
+      }
+    },
+    {
+      "id": "audit_matched",
+      "label": "🔎 Audit Matched Channels",
+      "description": "Scan channels that already have EPG assigned and flag any where a better match now exists. Useful after adding a new EPG source. Does not modify the database.",
+      "button_label": "🔎 Audit",
+      "button_variant": "outline",
+      "button_color": "violet"
+    },
+    {
+      "id": "show_stats",
+      "label": "📊 Statistics",
+      "description": "Show a quick overview of matched vs unmatched channel counts by group and total EPG entries available. No matching engine run — instant results.",
+      "button_label": "📊 Stats",
+      "button_variant": "outline",
+      "button_color": "gray"
     },
     {
       "id": "show_unmatched",
