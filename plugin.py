@@ -42,7 +42,7 @@ _EXPORT_DIR = "/data/exports"
 
 class Plugin:
     name        = "EPG Suggester"
-    version     = "2.3.0"
+    version     = "2.4.0"
     description = "Suggests EPG entries for channels without EPG assigned, using fuzzy name matching."
 
     # ------------------------------------------------------------------
